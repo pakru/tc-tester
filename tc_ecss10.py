@@ -14,6 +14,7 @@ import signal
 import pjSIP_py.pjUA as pjua
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
+import ssh_cocon.ssh_cocon as ccn
 
 login = str(os.environ.get('COCON_USER'))
 password = str(os.environ.get('COCON_PASS'))
@@ -101,12 +102,17 @@ class testHTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		#self.wfile.write(bytes(message, 'utf8'))
 		#self.send_response(code=200, message='OK')
 
+
+'''
+
 print(host+':'+format(port))
 
 client = paramiko.SSHClient()
 
 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 print('Connecting to host: '+ host +' ...') 
+'''
+
 #client.connect(hostname=host, username=login, password=password, port=port)
 colorama.init(autoreset=True)
 
@@ -123,226 +129,47 @@ def runHTTPYealinkListener():
 	httpd.serve_forever()
 
 
-def executeOnSSH(commandStr):
-	paramiko.util.log_to_file('/tmp/ssh_paramiko.ssh')
-	client.connect(hostname=host, username=login, password=password, port=port, look_for_keys=False, allow_agent=False)	
-	stdin, stdout, stderr = client.exec_command(commandStr)
-	data = stdout.read() + stderr.read()
-	client.close()
-	time.sleep(0.5)
-	return data.decode("utf-8")
-
-def domainRemove(dom=testingDomain):
-	client.connect(hostname=host, username=login, password=password, port=port, look_for_keys=False, allow_agent=False)
-	chan = client.invoke_shell()
-	chan.send('domain/remove ' +testingDomain+ '\n')
-	buff = ''
-	while not buff.endswith('Are you sure?: yes/no ?> '):
-		resp = chan.recv(9999)
-		buff += resp.decode("utf-8")
-	#print(buff)
-	chan.send('yes\n')
-	buff = ''
-	while not buff.endswith(']:/$ '):
-		resp = chan.recv(9999)
-		buff += resp.decode("utf-8")
-	print('Removing domain...')
-	print(buff)
-	client.close()
-
-def domainDeclare(dom=testingDomain):
-	print('Checking if test domain exist...')
-	returnedFromSSH = executeOnSSH('domain/list')
-	print(returnedFromSSH)
-	if testingDomain in returnedFromSSH: # проверка наличия текста в выводе
-		print('Domain exists... needs to remove')
-		domainRemove(dom)
-	else:
-		print('Domain "'+ dom +'" is not exist... need to create it')
-
-	print('Declaring domain...')
-	returnedFromSSH = executeOnSSH('domain/declare ' + dom + ' --add-domain-admin-privileges --add-domain-user-privileges')
-	print(returnedFromSSH)
-	if 'declared' in returnedFromSSH: # проверка наличия текста в выводе
-		return True
-	else:
-		return False
-
-def checkDomainInit(dom=testingDomain):
-	print('Checking domain creation...')
-	returnedFromSSH = executeOnSSH('domain/' + dom + '/sip/network/info share_set ')
-	print(returnedFromSSH)
-	if 'share_set' in returnedFromSSH:
-		return True
-	else:
-		return False	
-
-def sipTransportSetup(sipIP,sipPort):
-	print('Seting up SIP`s transport')
-	returnedFromSSH = executeOnSSH('domain/' + testingDomain + '/sip/network/set listen_ports list ['+ sipPort +']')
-	print(returnedFromSSH)
-	returnedFromSSH = executeOnSSH('domain/' + testingDomain + '/sip/network/set node_ip ip-set = ipset node = '+ sipNode +' ip = ' + sipIP)
-	print(returnedFromSSH)
-	if 'successfully changed' in returnedFromSSH:
-		return True
-	else: 
-		return False
-
-def sipUserInfo(dom,sipNumber,sipGroup,complete=False):
-	returnedFromSSH = executeOnSSH('domain/' + dom + '/sip/user/info '+ sipGroup +' '+ sipNumber + '@'+ dom)
-	print(returnedFromSSH)
-	if 'Contacts list is empty' in returnedFromSSH:
-		return True
-	else:
-		return False
-
-
-def subscribersCreate(sipNumber,sipPass,dom,sipGroup,routingCTX):
-	print('Declaring Subscribers:... '+ sipNumber + ' ...')
-	returnedFromSSH = executeOnSSH('domain/' + dom + '/sip/user/declare '+ routingCTX +' '+ sipGroup +' '+ sipNumber+'@'+ dom +' none no_qop_authentication login-as-number '+ sipPass)
-	print(returnedFromSSH)
-	returnedFromSSH = executeOnSSH('domain/' + dom + '/sip/user/info '+ sipGroup +' '+ sipNumber + '@'+ dom)
-	print(returnedFromSSH)
-	if 'internal iface name' in returnedFromSSH:
-		return True
-	else:
-		return False
-
-def ssEnable(dom,subscrNum,ssNames):
-	print('Enabling services: '+ ssNames + ' for ' + subscrNum)
-	returnedFromSSH = executeOnSSH('domain/'+ dom +'/ss/enable '+ subscrNum +' ' + ssNames)
-	print(returnedFromSSH)
-	if 'Success:' in returnedFromSSH:
-		return True
-	else:
-		return False
-
-def ssActivation(dom,subscrNum,ssName,ssOptions=''):
-	if ssOptions is '':
-		print('Activating service: '+ ssName + ' for ' + subscrNum)
-	else:
-		print('Activating service: '+ ssName + ' for ' + subscrNum + ' with options: '+ ssOptions)
-
-	returnedFromSSH = executeOnSSH('domain/'+ dom +'/ss/activate '+ subscrNum +' '+ ssName +' '+ ssOptions)
-	print(returnedFromSSH)
-	if 'Success:' in returnedFromSSH:
-		return True
-	else:
-		return False
-
-def ssAddAccess(dom,ssName,dsNode='ds1'):
-	print('Adding access to supplementary services for domain :'+ dom)
-	returnedFromSSH = executeOnSSH('cluster/storage/'+dsNode+'/ss/access-list add ' + dom + ' ' + ssName)
-	print(returnedFromSSH)
-	if 'successfully' in returnedFromSSH:
-		return True
-	else:
-		return False
-
-def ssAddAccessAll(dom,dsNode='ds1'):
-	return ssAddAccess(dom=dom,ssName='*',dsNode=dsNode)
-
-
 def ssActivate(dom=testingDomain):
 	print('Activating services...')	
 
-	if not ssAddAccessAll(dom=dom):
+	if not ccn.ssAddAccessAll(dom=dom):
 		return False
 	#returnedFromSSH = executeOnSSH('cluster/storage/ds1/ss/access-list add ' + dom + ' *')
 	#print(returnedFromSSH)
 
-	if not ssEnable(dom=dom,subscrNum=masterNumber,ssNames='teleconference_manager chold ctr call_recording'):
+	if not ccn.ssEnable(dom=dom,subscrNum=masterNumber,ssNames='teleconference_manager chold ctr call_recording clip cnip'):
 		return False
-	if not ssEnable(dom=dom,subscrNum=secondaryMaster,ssNames='chold ctr call_recording'):
+	if not ccn.ssEnable(dom=dom,subscrNum=secondaryMaster,ssNames='chold ctr call_recording cnip clip'):
+		return False
+	if not ccn.ssEnable(dom=dom,subscrNum=tcMembers,ssNames='chold ctr cnip clip'):
 		return False
 	
-	if not ssActivation(dom=dom,subscrNum=secondaryMaster,ssName='chold',ssOptions='dtmf_sequence_as_flash = false'):
+	if not ccn.ssActivation(dom=dom,subscrNum=secondaryMaster,ssName='chold',ssOptions='dtmf_sequence_as_flash = false'):
 		return False
-	if not ssActivation(dom=dom,subscrNum=secondaryMaster,ssName='ctr'):
+	if not ccn.ssActivation(dom=dom,subscrNum=secondaryMaster,ssName='ctr'):
 		return False
-	if not ssActivation(dom=dom,subscrNum=secondaryMaster,ssName='call_recording',ssOptions='mode = always_on'):
+	if not ccn.ssActivation(dom=dom,subscrNum=secondaryMaster,ssName='call_recording',ssOptions='mode = always_on'):
 		return False
 
-	if not ssActivation(dom=dom,subscrNum=masterNumber,ssName='chold',ssOptions='dtmf_sequence_as_flash = false'):
+	if not ccn.ssActivation(dom=dom,subscrNum=masterNumber,ssName='chold',ssOptions='dtmf_sequence_as_flash = false'):
 		return False
-	if not ssActivation(dom=dom,subscrNum=masterNumber,ssName='call_recording',ssOptions='mode = always_on'):
+	if not ccn.ssActivation(dom=dom,subscrNum=masterNumber,ssName='call_recording',ssOptions='mode = always_on'):
 		return False
-	if not ssActivation(dom=dom,subscrNum=masterNumber,ssName='teleconference_manager',ssOptions='second_line = [' + secondaryMaster + ']'):
+	if not ccn.ssActivation(dom=dom,subscrNum=masterNumber,ssName='teleconference_manager',ssOptions='second_line = [' + secondaryMaster + ']'):
 		return False
+
+	if not ccn.ssActivation(dom=dom,subscrNum=tcMembers,ssName='cnip'):
+		return False
+	if not ccn.ssActivation(dom=dom,subscrNum=tcMembers,ssName='clip'):
+		return False
+
 	
 	return True
-	#returnedFromSSH = executeOnSSH('domain/'+ dom +'/ss/enable '+ masterNumber +' teleconference_manager chold ctr call_recording')
-	#print(returnedFromSSH)
-	#returnedFromSSH = executeOnSSH('domain/'+ dom +'/ss/enable '+ secondaryMaster +' chold ctr call_recording')
-	#print(returnedFromSSH)	
-	#returnedFromSSH = executeOnSSH('domain/'+ dom +'/ss/activate '+ secondaryMaster +' chold dtmf_sequence_as_flash = false')
-	#print(returnedFromSSH)
-	#returnedFromSSH = executeOnSSH('domain/'+ dom +'/ss/activate '+ secondaryMaster +' ctr')
-	#print(returnedFromSSH)
-	#returnedFromSSH = executeOnSSH('domain/'+ dom +'/ss/activate '+ secondaryMaster +' call_recording mode = always_on')
-	#print(returnedFromSSH)
-	#returnedFromSSH = executeOnSSH('domain/'+ dom +'/ss/activate '+ masterNumber +' chold dtmf_sequence_as_flash = false')
-	#print(returnedFromSSH)
-	#returnedFromSSH = executeOnSSH('domain/'+ dom +'/ss/activate '+ masterNumber +' call_recording mode = always_on')
-	#print(returnedFromSSH)
-	#returnedFromSSH = executeOnSSH('domain/'+ dom +'/ss/activate '+ masterNumber +' teleconference_manager second_line = [' + secondaryMaster + ']')
-	#print(returnedFromSSH)
-	
 
-def setSysIfaceRoutung(dom=testingDomain,routingCTX=tcRoutingName):
-	print('Seting routing ctx to iface system:teleconference...')
-	returnedFromSSH = executeOnSSH('domain/'+ dom +'/system-iface/set system:teleconference routing.context '+ routingCTX)
-	print(returnedFromSSH)
-	if 'successfully changed' in returnedFromSSH:
-		return True
-	else:
-		return False
-
-def cstaEnable():
-	print('Enable CSTA...')
-	returnedFromSSH = executeOnSSH('api/csta/set enabled true')
-	print(returnedFromSSH)
-	if 'successfully changed' in returnedFromSSH:
-		return True
-	else:
-		return False
-
-def trunkDeclare(dom,trunkName,trunkGroup,routingCTX,sipPort,destSipIP,destSipPort):
-	print('Declaring SIP trunk...')
-	returnedFromSSH = executeOnSSH('domain/'+ dom +'/sip/trunk/declare '+ routingCTX +' '+ trunkGroup +' '+ trunkName +' ipset '+ destSipIP +' '+ destSipPort +' sip-proxy '+ sipPort)
-	print(returnedFromSSH)
-	if 'declared' in returnedFromSSH:
-		return True
-	else:
-		return False
-
-def loggingSet(node,logRule,action):
-	print('Set logging of '+ node +' ' + logRule + ' to ' + action )
-	print('This action can take a few minutes. Be patient!')
-	returnedFromSSH = executeOnSSH('node/'+ node +'/log/config rule '+logRule+' '+action)
-	print(returnedFromSSH)
-	if 'Successful' in returnedFromSSH:
-		return True
-	else:
-		return False
-
-
-def tcRestHostSet(restHost,restPort):
-	print('Setting restHost and restPort...')
-	returnedFromSSH = executeOnSSH('system/tc/properties/set * rest_host ' + restHost)
-	#print(returnedFromSSH)
-	if not 'successfully changed' in returnedFromSSH:
-		print(returnedFromSSH)
-		return False
-	returnedFromSSH = executeOnSSH('system/tc/properties/set * rest_port ' + restPort)
-	if not 'successfully changed' in returnedFromSSH:
-		print(returnedFromSSH)
-		return False
-	return True
 
 def tcPhonesStatus(dom,masterNumber,exitOnFail=False,sysExitCode=1):
 	print('Getting master Phones Status...')
-	returnedFromSSH = executeOnSSH('domain/'+dom+'/tc/phones/status')
+	returnedFromSSH = ccn.executeOnSSH('domain/'+dom+'/tc/phones/status')
 	print(returnedFromSSH)
 	if masterNumber in returnedFromSSH:
 		return True
@@ -480,7 +307,7 @@ def preconfigure():
 	###### - to be removed
 	hRequests = HT.httpTerm(host=host,port='9999',login=login,passwd=password)
 
-	if domainDeclare(testingDomain) :
+	if ccn.domainDeclare(testingDomain) :
 		print(Fore.GREEN + 'Successful domain declare')
 	else :
 		print(Fore.RED + 'Smthing happen wrong with domain declaration...')
@@ -488,7 +315,7 @@ def preconfigure():
 
 	cnt = 0
 	time.sleep(2)
-	while not checkDomainInit(testingDomain):					# проверяем инициализацию домена
+	while not ccn.checkDomainInit(testingDomain):					# проверяем инициализацию домена
 		print(Fore.YELLOW + 'Not inited yet...')	
 		cnt += 1
 		if cnt > 5:
@@ -497,7 +324,7 @@ def preconfigure():
 			#sys.exit(1)
 		time.sleep(2)
 
-	if sipTransportSetup(testingDomainSIPaddr,testingDomainSIPport) :
+	if ccn.sipTransportSetup(dom=testingDomain,sipIP=testingDomainSIPaddr,sipPort=testingDomainSIPport):
 		print(Fore.GREEN + 'Successful SIP transport declare')
 	else :
 		print(Fore.RED + 'Smthing happen wrong with SIP network setup...')
@@ -510,53 +337,59 @@ def preconfigure():
 		print(Fore.RED + 'Smthing happen wrong with routing declaration...')
 	#time.sleep(5)
 
-	if subscribersCreate(sipNumber=masterNumber,sipPass=masterSIPpass,dom=testingDomain,sipGroup=SIPgroup,routingCTX=tcRoutingName):
+	if ccn.subscribersCreate(dom=testingDomain,sipNumber=masterNumber,sipPass=masterSIPpass,sipGroup=SIPgroup,routingCTX=tcRoutingName):
 	 	print(Fore.GREEN + 'Successful Master creation')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with subscribers creation...')
 		return False
 
-	if subscribersCreate(sipNumber=secondaryMaster,sipPass=secondaryMaster,dom=testingDomain,sipGroup=SIPgroup,routingCTX=tcRoutingName):
+	if ccn.subscribersCreate(dom=testingDomain,sipNumber=secondaryMaster,sipPass=secondaryMaster,sipGroup=SIPgroup,routingCTX=tcRoutingName):
 	 	print(Fore.GREEN + 'Successful Secondary Master creation')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with subscriber creation...')
 		return False
 
-	if subscribersCreate(sipNumber=tcMembers,sipPass='1234',dom=testingDomain,sipGroup=SIPgroup,routingCTX=tcRoutingName):
+	if ccn.subscribersCreate(dom=testingDomain,sipNumber=tcMembers,sipPass='1234',sipGroup=SIPgroup,routingCTX=tcRoutingName):
 	 	print(Fore.GREEN + 'Successful Members creation')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with subscribers creation...')
 		return False
 		#sys.exit(1)
 
-	if loggingSet(node=coreNode,logRule='all_tc',action='on'):
+	if ccn.setLogging(node=coreNode,logRule='all_tc',action='on'):
 	 	print(Fore.GREEN + 'Logging of '+coreNode+ ' all_tc switched to on')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with logging switching...')
 
+	if ccn.setTraceMode(dom=testingDomain,traceMode='full_compressed'):
+		print(Fore.GREEN + 'core traces successfully enabled')
+	else:
+		print(Fore.RED + 'Smthing happen wrong with changing core trace mode...')
+
+
 	if ssActivate(testingDomain):
-		print(Fore.GREEN + 'Successful Services activated')
+		print(Fore.GREEN + 'Successful Services activated for all subscribers')
 	else:
 		print(Fore.RED + 'Smthing happen wrong activating services...')
 		return False
 		#sys.exit(1)
 
-	if setSysIfaceRoutung(testingDomain,tcRoutingName):
+	if ccn.setSysIfaceRoutung(dom=testingDomain,sysIface='system:teleconference',routingCTX=tcRoutingName):
 		print(Fore.GREEN + 'Successful set routing for sys:teleconference')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with set routing for sys:teleconference')
 		return False
-		#sys.exit(1)
+		sys.exit(1)
 
 
-	if trunkDeclare(dom=testingDomain,trunkName=tcExtTrunkName,trunkGroup='test.trunk',routingCTX=tcRoutingName,sipPort=testingDomainSIPport,destSipIP=tcExtTrunkIP,destSipPort=tcExtTrunkPort):
+	if ccn.trunkDeclare(dom=testingDomain,trunkName=tcExtTrunkName,trunkGroup='test.trunk',routingCTX=tcRoutingName,sipPort=testingDomainSIPport,sipIPset='ipset',destSipIP=tcExtTrunkIP,destSipPort=tcExtTrunkPort):
 		print(Fore.GREEN + 'Successful SIP trunk declare')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with SIP trunk declaration')
 		return False
 		#sys.exit(1)
 
-	if tcRestHostSet(restHost=restHost,restPort=restPort):
+	if ccn.tcRestHostSet(restHost=restHost,restPort=restPort):
 		print(Fore.GREEN + 'Successful restHost set')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with restHost set')
@@ -646,7 +479,7 @@ def basicTest():
 	print('\n')
 	print(Fore.GREEN + 'All UAC registered...')
 
-	sipUserInfo(dom=testingDomain,sipNumber=masterNumber,sipGroup=SIPgroup,complete=False)
+	ccn.subscriberSipInfo(dom=testingDomain,sipNumber=masterNumber,sipGroup=SIPgroup,complete=False)
 
 	if tcStartConf(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber,templateName=testTemplateName):
 		print(Fore.GREEN +'Start teleconference success')
@@ -655,7 +488,7 @@ def basicTest():
 		return False
 		#sys.exit(1)
 
-	time.sleep(3)
+	time.sleep(5)
 
 	if tcMasterUA.uaCurrentCallInfo.state != 5:
 		print(Fore.RED + 'Master UA is in wrong state')
@@ -1057,7 +890,6 @@ else:
 	print(Fore.GREEN +'-Connection to active conference test done!-')
 	time.sleep(1)
 
-client.close()
 print(Fore.GREEN +'It seems to be all FINE...')
 print('We did it!!')
 sys.exit(0)
