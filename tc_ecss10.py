@@ -132,37 +132,36 @@ def runHTTPYealinkListener():
 def ssActivate(dom=testingDomain):
 	print('Activating services...')	
 
-	if not ccn.ssAddAccessAll(dom=dom):
+	if not ccn.ssAddAccessAll(dom=testingDomain):
 		return False
 	#returnedFromSSH = executeOnSSH('cluster/storage/ds1/ss/access-list add ' + dom + ' *')
 	#print(returnedFromSSH)
 
-	if not ccn.ssEnable(dom=dom,subscrNum=masterNumber,ssNames='teleconference_manager chold ctr call_recording clip cnip'):
+	if not ccn.ssEnable(dom=testingDomain,subscrNum=masterNumber,ssNames='teleconference_manager chold ctr call_recording clip cnip'):
 		return False
-	if not ccn.ssEnable(dom=dom,subscrNum=secondaryMaster,ssNames='chold ctr call_recording cnip clip'):
+	if not ccn.ssEnable(dom=testingDomain,subscrNum=secondaryMaster,ssNames='chold ctr call_recording cnip clip'):
 		return False
-	if not ccn.ssEnable(dom=dom,subscrNum=tcMembers,ssNames='chold ctr cnip clip'):
+	if not ccn.ssEnable(dom=testingDomain,subscrNum=tcMembers,ssNames='chold ctr cnip clip'):
 		return False
 	
-	if not ccn.ssActivation(dom=dom,subscrNum=secondaryMaster,ssName='chold',ssOptions='dtmf_sequence_as_flash = false'):
+	if not ccn.ssActivation(dom=testingDomain,subscrNum=secondaryMaster,ssName='chold',ssOptions='dtmf_sequence_as_flash = false'):
 		return False
-	if not ccn.ssActivation(dom=dom,subscrNum=secondaryMaster,ssName='ctr'):
+	if not ccn.ssActivation(dom=testingDomain,subscrNum=secondaryMaster,ssName='ctr'):
 		return False
-	if not ccn.ssActivation(dom=dom,subscrNum=secondaryMaster,ssName='call_recording',ssOptions='mode = always_on'):
-		return False
-
-	if not ccn.ssActivation(dom=dom,subscrNum=masterNumber,ssName='chold',ssOptions='dtmf_sequence_as_flash = false'):
-		return False
-	if not ccn.ssActivation(dom=dom,subscrNum=masterNumber,ssName='call_recording',ssOptions='mode = always_on'):
-		return False
-	if not ccn.ssActivation(dom=dom,subscrNum=masterNumber,ssName='teleconference_manager',ssOptions='second_line = [' + secondaryMaster + ']'):
+	if not ccn.ssActivation(dom=testingDomain,subscrNum=secondaryMaster,ssName='call_recording',ssOptions='mode = always_on'):
 		return False
 
-	if not ccn.ssActivation(dom=dom,subscrNum=tcMembers,ssName='cnip'):
+	if not ccn.ssActivation(dom=testingDomain,subscrNum=masterNumber,ssName='chold',ssOptions='dtmf_sequence_as_flash = false'):
 		return False
-	if not ccn.ssActivation(dom=dom,subscrNum=tcMembers,ssName='clip'):
+	if not ccn.ssActivation(dom=testingDomain,subscrNum=masterNumber,ssName='call_recording',ssOptions='mode = always_on'):
+		return False
+	if not ccn.ssActivation(dom=testingDomain,subscrNum=masterNumber,ssName='teleconference_manager',ssOptions='second_line = [' + secondaryMaster + ']'):
 		return False
 
+	if not ccn.ssActivation(dom=testingDomain,subscrNum=tcMembers,ssName='cnip'):
+		return False
+	if not ccn.ssActivation(dom=testingDomain,subscrNum=tcMembers,ssName='clip'):
+		return False
 	
 	return True
 
@@ -367,7 +366,7 @@ def preconfigure():
 		print(Fore.RED + 'Smthing happen wrong with changing core trace mode...')
 
 
-	if ssActivate(testingDomain):
+	if ssActivate():
 		print(Fore.GREEN + 'Successful Services activated for all subscribers')
 	else:
 		print(Fore.RED + 'Smthing happen wrong activating services...')
