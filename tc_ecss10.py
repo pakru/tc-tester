@@ -1,67 +1,63 @@
 #!/usr/local/bin/python3.5
 
-import paramiko
-import time
-import sys
-import os
-import subprocess
+import config, time, sys, colorama, requests, logging
+#import subprocess
 import hc_module.ecss_config_http_commands as HT
-import colorama
 from colorama import Fore, Back, Style
 import xml.etree.ElementTree as ET
-import requests
 import signal
 import pjSIP_py.pjUA as pjua
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 import ssh_cocon.ssh_cocon as ccn
 
-login = str(os.environ.get('COCON_USER'))
-password = str(os.environ.get('COCON_PASS'))
+testingDomain = config.testConfigJson['DomainName']
+testingDomainSIPport = config.testConfigJson['sipListenPort']
+testingDomainSIPaddr = config.testConfigJson['SystemVars'][0]['%%EXTER_IP%%']
+testingDomainSIPaddr2 = config.testConfigJson['SystemVars'][0]['%%EXTER_IP2%%']
 
-host = str(os.environ.get('SSW_IP'))
-port = int(os.environ.get('COCON_PORT'))
-
-testingDomain = str(os.environ.get('TC_TEST_DOMAIN_NAME'))
-testingDomainSIPport = str( int(os.environ.get('SSW_PORT'))+2 )
-testingDomainSIPaddr = str(os.environ.get('SSW_IP'))
-coreNode='core1@ecss1'
-sipNode='sip1@ecss1'
-dsNode='ds1@ecss1'
-sippPath = str(os.environ.get('SIPP_PATH'))
-sippListenAddress=str(os.environ.get('TC_EXT_TRUNK_IP'))
-sippListenPort='15076'
+#sippPath = str(os.environ.get('SIPP_PATH'))
+pjListenAddress=config.testConfigJson['SystemVars'][0]['%%IP%%']
+pjListenPort=config.testConfigJson['SIPuaListenPort']
 sippMediaListenPort='16016'
 sippMediaListenPortTrunk='17016'
 
-masterNumber = str(os.environ.get('TC_MASTER_NUMBER'))
-secondaryMaster = str(int(masterNumber) + 1)
-masterSIPpass = str(os.environ.get('TC_MASTER_NUMBER'))
-SIPgroup = str(os.environ.get('SIP_GROUP'))
-restHost = str(os.environ.get('TC_REST_HOST'))
-restPort = str(os.environ.get('TC_REST_PORT'))
-testTemplateName=str(os.environ.get('TC_TEMPLATE_NAME'))
+masterNumber = config.testConfigJson['UsersMasters'][0]['Number']
+secondaryMaster = config.testConfigJson['UsersMasters'][1]['Number']
+masterSIPpass = config.testConfigJson['UsersMasters'][0]['Password']
+SIPgroup = config.testConfigJson['UsersMasters'][0]['SipGroup']
+restHost = config.testConfigJson['SystemVars'][0]['%%EXTER_IP%%']
+restPort = config.testConfigJson['RestPort']
+testTemplateName = config.testConfigJson['TemplateName']
 
-tcPath = str(os.environ.get('TC_PATH'))
-tcRoutingName='test_tc'
-tcExtTrunkName='toSIPp'
-tcExtTrunkIP=str(os.environ.get('TC_EXT_TRUNK_IP'))
-tcExtTrunkPort=str(os.environ.get('TC_EXT_TRUNK_PORT'))
-tcClientCount=str(os.environ.get('TC_CLIENT_COUNT'))
-tcClientNumberPrefix=str(os.environ.get('TC_CLIENT_NUMBER_PREFIX'))
-tcMembers='20{01-20}'
-tcExtMember = '2020'
-tcUACCount = 5
+#tcPath = str(os.environ.get('TC_PATH'))
+tcRoutingName = 'test_tc'
+tcExtTrunkName = 'toSIPp'
+#tcExtTrunkIP=str(os.environ.get('TC_EXT_TRUNK_IP'))
+#tcExtTrunkPort=str(os.environ.get('TC_EXT_TRUNK_PORT'))
+#tcClientCount=str(os.environ.get('TC_CLIENT_COUNT'))
+tcClientNumberPrefix = config.testConfigJson['UsersClients'][0]['Number'][0]
+tcUACCount = len(config.testConfigJson['UsersClients'])
+#tcUAcliCount = 5
+tcMembers = '{' + config.testConfigJson['UsersClients'][0]['Number'] + '-' + config.testConfigJson['UsersClients'][tcUACCount-1]['Number'] + '}'
+tcExtMember = config.testConfigJson['UsersExternal'][0]['Number']
+
+tcMasterUA = None
+tcUAcli = []
+extUAcli = None
+tcSecondaryMasterUA = None
 
 recievedPOSTstr = ''
+testResultsList = []
 
 colorama.init(autoreset=True)
-
+'''
 class YeaPhone():
 	def __init__():
 		pass
 	def parseXML():
 		pass
+'''
 
 # HTTPRequestHandler class
 class testHTTPServer_RequestHandler(BaseHTTPRequestHandler):
@@ -71,6 +67,8 @@ class testHTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		# Send response status code
 		self.send_response(200)
 		print('Recieved GET message')
+		logging.info('Recieved GET message')
+		logging.info('Recieved data: ' + str(self.rfile.readline().decode('utf-8')))
 		print('Recieved data: ' + str(self.rfile.readline().decode('utf-8')))
 		#Send headers
 		self.send_header('Content-Length','0')
@@ -88,6 +86,8 @@ class testHTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		self.send_response(200)
 		recievedPOSTstr = self.rfile.readline().decode('utf-8')
 		print('Recieved POST message')
+		logging.info('Recieved POST message: ' + recievedPOSTstr)
+		#logging.info('Recieved data: ' + str(self.rfile.readline().decode('utf-8')))
 		#print('Recieved POST message: ' + recievedPOSTstr)
 		#print('Recieved data: ' + str(self.rfile.readline().decode('utf-8')))
 		#self.log_request()
@@ -96,7 +96,7 @@ class testHTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		self.server_version = 'PY/1.0'
 
 		self.send_header('Content-Length','0')
-		self.send_header('Server','Fake yealink')
+		self.send_header('Server','Fake Yealink')
 		#self.send_header('Server','Fake yealink')
 		self.end_headers()
 		#self.flush_headers()
@@ -105,7 +105,6 @@ class testHTTPServer_RequestHandler(BaseHTTPRequestHandler):
 		# Write content as utf-8 data
 		#self.wfile.write(bytes(message, 'utf8'))
 		#self.send_response(code=200, message='OK')
-
 
 '''
 
@@ -116,9 +115,7 @@ client = paramiko.SSHClient()
 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 print('Connecting to host: '+ host +' ...') 
 '''
-
 #client.connect(hostname=host, username=login, password=password, port=port)
-
 
 def runHTTPYealinkListener():
 	print('Starting Yealink http server...')
@@ -127,8 +124,10 @@ def runHTTPYealinkListener():
 	server_address = ('', 80)
 	try:
 		httpd = HTTPServer(server_address, testHTTPServer_RequestHandler)
+		logging.info('Starting running http fake Yealink server')
 	except Exception as e:
 		print('Exception: ' + str(e))
+		logging.error('Exception happen at http server start: ' + str(e))
 	print('running yealink server...')
 	httpd.serve_forever()
 
@@ -185,21 +184,26 @@ def tcPhonesStatus(dom,masterNumber,exitOnFail=False,sysExitCode=1):
 
 def tcStartConf(dom,restHost,restPort,masterNumber,templateName):
 	print('Trying to send start conference command...')
+	logging.info('Trying to send start conference command...')
 	try:
+		logging.info('Http request: ' + 'http://'+restHost+':'+restPort+'/'+dom+'/service/tc/'+masterNumber+'/choose')
 		r = requests.get('http://'+restHost+':'+restPort+'/'+dom+'/service/tc/'+masterNumber+'/choose')
 	except Exception as e:
 		print('Exception ocure in making http request: ' + format(e))
+		logging.error('Exception ocure in making http request: ' + format(e))
 		return False
 	if r.status_code != 200:
 		print('Return code: ' + str(r.status_code))
-		print
+		logging.info('Return code: ' + str(r.status_code))
 		return False
 	XMLresult=r.content.decode('utf-8')[4:]  # cut 'xml='
 	print('XML received: '+ XMLresult)
+	logging.info('XML received: '+ XMLresult)
 	try:
 		XMLStruct = ET.fromstring(XMLresult)
 	except Exception as e:
 		print('Exception ocure in making structure: ' + format(e))
+		logging.error('Exception ocure in making structure: ' + format(e))
 		return False		
 	templateFound = False
 	for element in XMLStruct.findall('MenuItem'):
@@ -208,19 +212,42 @@ def tcStartConf(dom,restHost,restPort,masterNumber,templateName):
 			templateFound = True
 	if not templateFound:
 		print('Didnt found such template ' + templateName)
+		logging.error('Didnt found such template ' + templateName)
 		return False
 	print('TC template start URL: ' + URLReq)
+	logging.info('TC template start URL: ' + URLReq)
 
 	r = requests.get(URLReq)
 	if r.status_code != 200:
 		print('Return code: ' + str(r.status_code))
+		logging.error('Return code: ' + str(r.status_code))
 		return False
 	return True
 
 def tcCancelPush(dom,restHost,restPort,Number):
 	print('Pushing cancel button...')
+	logging.info('Pushing cancel button...')
 	try:
+		logging.info(
+			'Http request: ' + 'http://' + restHost + ':' + restPort + '/' + dom + '/service/tc/' + masterNumber + '/choose')
 		r = requests.get('http://'+restHost+':'+restPort+'/'+dom+'/service/tc/'+Number+'/cancel')
+	except Exception as e:
+		print('Exception ocure: ' + format(e))
+		logging.error('Exception ocure: ' + format(e))
+		return False
+	if r.status_code != 200:
+		logging.info('Return code: ' + str(r.status_code))
+		print('Return code: ' + str(r.status_code))
+		return False
+	return True
+
+def tcExpPushOnUser(dom,restHost,restPort,masterNumber,memberNumber):
+	print('Pushing on '+ str(memberNumber) +' member button ...')
+	logging.info('Pushing on '+ str(memberNumber) +' member button ...')
+	try:
+		logging.info(
+			'Http request: ' + 'http://' + restHost + ':' + restPort + '/' + dom + '/service/tc/' + masterNumber + '/choose')
+		r = requests.get('http://'+restHost+':'+restPort+'/'+dom+'/service/tc/'+masterNumber+'/exp/'+memberNumber)
 	except Exception as e:
 		print('Exception ocure: ' + format(e))
 		return False
@@ -229,30 +256,19 @@ def tcCancelPush(dom,restHost,restPort,Number):
 		return False
 	return True
 
-def tcExpPushOnUser(dom,restHost,restPort,masterNumber,memberNumber):
-	print('Pushing on '+ str(memberNumber) +' member button ...')
-	try:
-		r = requests.get('http://'+restHost+':'+restPort+'/'+dom+'/service/tc/'+masterNumber+'/exp/'+memberNumber)
-	except Exception as e:
-		rint('Exception ocure: ' + format(e))
-		return False
-	if r.status_code != 200:
-		print('Return code: ' + str(r.status_code))
-		return False
-	return True
-
 def tcStopConf(dom,restHost,restPort,masterNumber):
 	print('Pushing on stop conference...')
+	logging.info('Pushing on stop conference...')
 	if not tcCancelPush(dom=dom,restHost=restHost,restPort=restPort,Number=masterNumber):
 		return False
 	time.sleep(0.5)
-
 	if tcExpPushOnUser(dom=dom,restHost=restHost,restPort=restPort,masterNumber=masterNumber,memberNumber=masterNumber):
 		return True
 	else:
 		return False
 
 def tcCancelUser(dom,restHost,restPort,Number):
+	print('Pushing on cancel user from conference...')
 	if not tcCancelPush(dom=dom,restHost=restHost,restPort=restPort,Number=masterNumber):
 		return False
 	time.sleep(0.5)
@@ -263,12 +279,17 @@ def tcCancelUser(dom,restHost,restPort,Number):
 
 def tcGroupAll(dom,restHost,restPort,masterNumber):
 	print('Trying to send tc group call...')
+	logging.info('Trying to send tc group call...')
 	try:
+		logging.info(
+			'Http request: ' + 'http://' + restHost + ':' + restPort + '/' + dom + '/service/tc/' + masterNumber + '/choose')
 		r = requests.get('http://'+restHost+':'+restPort+'/'+dom+'/service/tc/'+masterNumber+'/group/all')
 	except Exception as e:
-		rint('Exception ocure: ' + format(e))
+		print('Exception ocure: ' + format(e))
+		logging.error('Exception ocure: ' + format(e))
 		return False
 	if r.status_code != 200:
+		logging.info('Return code: ' + str(r.status_code))
 		print('Return code: ' + str(r.status_code))
 		return False
 	return True
@@ -287,16 +308,6 @@ def preconfigure():
        <teleconference/>
      </result>
     </rule>
-    <rule name="toSIPpTrunk">
-     <conditions>
-       <cdpn digits=\""""+ tcClientNumberPrefix +"""%\"/>
-     </conditions>
-     <result>
-        <external>
-          <trunk value=\""""+tcExtTrunkName+"""\"/>
-        </external>
-     </result>
-    </rule>
     <rule name="local_calls">
      <conditions>
        <cdpn digits="%"/>
@@ -308,9 +319,9 @@ def preconfigure():
 </context>"""
 
 	###### - to be removed
-	hRequests = HT.httpTerm(host=host,port='9999',login=login,passwd=password)
+	hRequests = HT.httpTerm(host=config.host,port='9999',login=config.login,passwd=config.password)
 
-	if ccn.domainDeclare(testingDomain, removeIfExists = True) :
+	if ccn.domainDeclare(testingDomain, removeIfExists = False) :
 		print(Fore.GREEN + 'Successful domain declare')
 	else :
 		print(Fore.RED + 'Smthing happen wrong with domain declaration...')
@@ -333,6 +344,10 @@ def preconfigure():
 		print(Fore.RED + 'Smthing happen wrong with SIP network setup...')
 		return False
 		#sys.exit(1)
+	if ccn.sipTransportSetup(dom=testingDomain,sipIP=testingDomainSIPaddr2,sipPort=testingDomainSIPport, sipNode='sip1@ecss2'):
+		print(Fore.GREEN + 'Successful secondary SIP transport declare')
+	else :
+		print(Fore.YELLOW + 'Smthing happen wrong with secondary SIP network setup...')
 
 	if hRequests.routeCtxAdd(domainName=testingDomain,ctxString=ctx) == 201:
 		print(Fore.GREEN + 'Successful declaration routing CTX')
@@ -341,26 +356,31 @@ def preconfigure():
 	#time.sleep(5)
 
 	if ccn.subscribersCreate(dom=testingDomain,sipNumber=masterNumber,sipPass=masterSIPpass,sipGroup=SIPgroup,routingCTX=tcRoutingName):
-	 	print(Fore.GREEN + 'Successful Master creation')
+		print(Fore.GREEN + 'Successful Master creation')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with subscribers creation...')
 		return False
 
 	if ccn.subscribersCreate(dom=testingDomain,sipNumber=secondaryMaster,sipPass=secondaryMaster,sipGroup=SIPgroup,routingCTX=tcRoutingName):
-	 	print(Fore.GREEN + 'Successful Secondary Master creation')
+		print(Fore.GREEN + 'Successful Secondary Master creation')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with subscriber creation...')
 		return False
 
-	if ccn.subscribersCreate(dom=testingDomain,sipNumber=tcMembers,sipPass='1234',sipGroup=SIPgroup,routingCTX=tcRoutingName):
-	 	print(Fore.GREEN + 'Successful Members creation')
+	if ccn.subscribersCreate(dom=testingDomain,sipNumber=tcMembers,sipPass=masterSIPpass,sipGroup=SIPgroup,routingCTX=tcRoutingName):
+		print(Fore.GREEN + 'Successful Members creation')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with subscribers creation...')
 		return False
-		#sys.exit(1)
 
-	if ccn.setLogging(node=coreNode,logRule='all_tc',action='on'):
-	 	print(Fore.GREEN + 'Logging of '+coreNode+ ' all_tc switched to on')
+	if ccn.subscribersCreate(dom=testingDomain,sipNumber=tcExtMember,sipPass=masterSIPpass,sipGroup=SIPgroup,routingCTX=tcRoutingName):
+		print(Fore.GREEN + 'Successful External subscriber creation')
+	else:
+		print(Fore.RED + 'Smthing happen wrong with subscriber creation...')
+		return False
+
+	if ccn.setLogging(node=config.coreNode,logRule='all_tc_bin',action='on'):
+		print(Fore.GREEN + 'Logging of '+ config.coreNode+ ' all_tc switched to on')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with logging switching...')
 
@@ -375,40 +395,36 @@ def preconfigure():
 	else:
 		print(Fore.RED + 'Smthing happen wrong activating services...')
 		return False
-		#sys.exit(1)
 
 	if ccn.setSysIfaceRoutung(dom=testingDomain,sysIface='system:teleconference',routingCTX=tcRoutingName):
 		print(Fore.GREEN + 'Successful set routing for sys:teleconference')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with set routing for sys:teleconference')
 		return False
-		sys.exit(1)
-
-
+	'''
 	if ccn.trunkDeclare(dom=testingDomain,trunkName=tcExtTrunkName,trunkGroup='test.trunk',routingCTX=tcRoutingName,sipPort=testingDomainSIPport,sipIPset='ipset',destSipIP=tcExtTrunkIP,destSipPort=tcExtTrunkPort):
 		print(Fore.GREEN + 'Successful SIP trunk declare')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with SIP trunk declaration')
 		return False
-		#sys.exit(1)
+	'''
 
 	if ccn.tcRestHostSet(restHost=restHost,restPort=restPort):
 		print(Fore.GREEN + 'Successful restHost set')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with restHost set')
 		return False
-		#sys.exit(1)
 
 	tcPhonesStatus(dom=testingDomain,masterNumber=masterNumber)
 
 	#time.sleep(1)
 	#if hRequests.tcTemplateCreate(testingDomain,templateName=testTemplateName,addressFirst=tcClientNumberPrefix+'00',addressesCount=int(tcClientCount)) == 201:
-	if hRequests.tcTemplateCreate(testingDomain,templateName=testTemplateName,addressFirst='2001',addressesCount=tcUACCount) == 201:
+	if hRequests.tcTemplateCreate(testingDomain,templateName=testTemplateName,addressFirst=str(int(config.testConfigJson['UsersClients'][0]['Number'])),
+								  addressesCount=tcUACCount) == 201:
 		print(Fore.GREEN + 'Successful teleconference template creation')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with teleconference template creation...')
-		return False
-		#sys.exit(1)
+		#return False
 
 	return True
 
@@ -432,55 +448,66 @@ def preconfigure():
 	#'''
 
 def registerUAs():
+	logging.info('Creating pj subscribers')
 	global tcMasterUA
-	global tcUAcli
-	global extUAcli
 	global tcSecondaryMasterUA
+	global extUAcli
+	global tcMasterUA
 
-	tcMasterUA = pjua.SubscriberUA(domain=testingDomain,username=masterNumber,passwd=masterSIPpass,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,displayName='TC Master UA',uaIP=sippListenAddress,regExpiresTimeout=60)
-	tcSecondaryMasterUA = pjua.SubscriberUA(domain=testingDomain,username=secondaryMaster,passwd=secondaryMaster,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,displayName='TC Secondary Master UA',uaIP=sippListenAddress,regExpiresTimeout=60)
-	extUAcli = pjua.SubscriberUA(domain=testingDomain,username=tcExtMember,passwd='1234',sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,displayName='TC ext UA',uaIP=sippListenAddress,regExpiresTimeout=60)
-	tcUAcli = []
+	tcMasterUA = pjua.SubscriberUA(domain=testingDomain,username=masterNumber,passwd=masterSIPpass,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,
+								   displayName='TC Master UA',uaIP=pjListenAddress,regExpiresTimeout=60)
+	tcSecondaryMasterUA = pjua.SubscriberUA(domain=testingDomain,username=secondaryMaster,passwd=secondaryMaster,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,
+											displayName='TC Secondary Master UA',uaIP=pjListenAddress,regExpiresTimeout=60)
+	extUAcli = pjua.SubscriberUA(domain=testingDomain,username=tcExtMember,passwd=masterSIPpass,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,
+								 displayName='TC ext UA',uaIP=pjListenAddress,regExpiresTimeout=60)
 
-	for i in range(1, tcUACCount+1):
-		subscrNum = str(2000+i)
-		tcUAcli.append(pjua.SubscriberUA(domain=testingDomain,username=subscrNum,passwd='1234',sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,displayName='Test UA'+str(i),uaIP=sippListenAddress,regExpiresTimeout=60))
+	for i in range(tcUACCount):
+		subscrNum = config.testConfigJson['UsersClients'][i]['Number']
+		tcUAcli.append(pjua.SubscriberUA(domain=testingDomain,username=subscrNum,passwd=masterSIPpass,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,
+										 displayName='Test UA'+str(i),uaIP=pjListenAddress,regExpiresTimeout=60))
 		#print('Len =' + str(len(tcUAcli)) )
 
 	if tcMasterUA.uaAccountInfo.reg_status != 200:
 		print(Fore.RED + 'Master UA failed to register!')
+		logging.error('Master UA failed to register!')
 		print(str(tcMasterUA.uaAccountInfo.uri) + ' state: ' + str(tcMasterUA.uaAccountInfo.reg_status) + ' - ' + str(tcMasterUA.uaAccountInfo.reg_reason))
 		return False
 	else:
 		print(Fore.GREEN + 'Master UA Registered')
+		logging.info('Master UA Registered')
 
 	if tcSecondaryMasterUA.uaAccountInfo.reg_status != 200:
 		print(Fore.RED + 'Secondary Master UA failed to register!')
+		logging.error('Secondary Master UA failed to register!')
 		print(str(tcMasterUA.uaAccountInfo.uri) + ' state: ' + str(tcMasterUA.uaAccountInfo.reg_status) + ' - ' + str(tcMasterUA.uaAccountInfo.reg_reason))
 		return False
 	else:
 		print(Fore.GREEN + 'Secondary Master UA Registered')
-
+		logging.info('Secondary Master UA Registered')
 
 	if extUAcli.uaAccountInfo.reg_status != 200:
 		print(Fore.RED + 'Client UA failed to register!')
+		logging.error('Client UA failed to register!')
 		print(str(tcMasterUA.uaAccountInfo.uri) + ' state: ' + str(tcMasterUA.uaAccountInfo.reg_status) + ' - ' + str(tcMasterUA.uaAccountInfo.reg_reason))
 		return False
 	else:
 		print(Fore.GREEN + 'External UA Registered')
-
+		logging.error('External UA Registered')
 
 	allCliRegistered = False
 	cnt = 0
 	while not allCliRegistered:
 		if cnt > 50:		
 			print(Fore.RED + 'Some client UAs failed to register!')
-			for i in range(0,tcUACCount):
+
+			for i in range(tcUACCount):
 				print(str(tcUAcli[i].uaAccountInfo.uri) + ' state: ' + str(tcUAcli[i].uaAccountInfo.reg_status) + ' - ' + str(tcUAcli[i].uaAccountInfo.reg_reason))
+				logging.warning(str(tcUAcli[i].uaAccountInfo.uri) + ' state: ' + str(tcUAcli[i].uaAccountInfo.reg_status) + ' - ' + str(tcUAcli[i].uaAccountInfo.reg_reason))
+			logging.error('Some client UAs failed to register!')
 			return False
 		cnt += 1
 		time.sleep(0.1)
-		for i in range(0,tcUACCount):
+		for i in range(tcUACCount):
 			print('.', end='')
 			if tcUAcli[i].uaAccountInfo.reg_status != 200:
 				allCliRegistered = False
@@ -489,44 +516,47 @@ def registerUAs():
 				allCliRegistered = True
 	print('\n')
 	print(Fore.GREEN + 'All UAC registered...')
+	logging.info('All UAC registered')
 
 	ccn.subscriberSipInfo(dom=testingDomain,sipNumber=masterNumber,sipGroup=SIPgroup,complete=False)
 
 	return True
 
-
-
 def basicTest():
+	logging.info('Basic Teleconference test')
 	Failure = False
-	global tcMasterUA
-	global tcUAcli
 
 	if tcStartConf(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber,templateName=testTemplateName):
 		print(Fore.GREEN +'Start teleconference success')
+		logging.info('Start teleconference success')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with teleconference starting...')
+		logging.error('Smthing happen wrong with teleconference starting...')
+		hangupAll()
 		return False
-		#sys.exit(1)
 
 	time.sleep(5)
 
 	if tcMasterUA.uaCurrentCallInfo.state != 5:
 		print(Fore.RED + 'Master UA is in wrong state')
+		logging.error('Master UA is in wrong state')
+		hangupAll()
 		return False
-		#sys.exit(1)
 	else:
 		print(Fore.GREEN + 'Master UA is in active call state')
-
+		logging.info('Master UA is in active call state')
 
 	print(Style.BRIGHT + 'Connecting user one by one')
-	for num in range(2001, 2001 + tcUACCount):
+	logging.info('Connecting user one by one')
+	firstUACliNum = int(config.testConfigJson['UsersClients'][0]['Number'])
+	for num in range(firstUACliNum, firstUACliNum + tcUACCount):
 		if tcExpPushOnUser(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber,memberNumber=str(num)):
 			print(Fore.GREEN +'User '+ str(num) +' command sent')
 		else:
 			print(Fore.RED + 'Smthing happen wrong with sending user '+ str(num) +' command sent...')
-			#return False
 
 	print(Style.BRIGHT + 'Teleconference in progress.... ')
+	logging.info('Teleconference in progress.... ')
 	cnt=0 # timer
 	confDuration = 10 + (tcUACCount * 2)
 
@@ -534,137 +564,155 @@ def basicTest():
 		time.sleep(1)
 		print('.',end='')
 		cnt += 1
-		for i in range(0,tcUACCount):
-			if tcUAcli[i].uaCurrentCallInfo.state != 5:
-				print(Fore.YELLOW +'UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
 
+	Failure = False
+	for i in range(tcUACCount):
+		if tcUAcli[i].uaCurrentCallInfo.state != 5:
+			print(Fore.YELLOW +'UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
+			logging.warning('UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
+			Failure = True
+
+	if Failure:
+		print('Some subscribers were in wrong call state')
+		logging.error('Some subscribers were in wrong call state')
+		hangupAll()
+		return False
 
 	print(Style.BRIGHT + 'Releasing use by it self')
-	for i in range(0,tcUACCount):	
-		tcUAcli[i].uaCurrentCall.hangup(code=200, reason='Release')
+	logging.info('Releasing use by it self')
+	for i in range(tcUACCount):
+		try:
+			tcUAcli[i].uaCurrentCall.hangup(code=200, reason='Release')
+		except:
+			pass
 
 	time.sleep(1)
 
 	if tcMasterUA.uaCurrentCallInfo.state != 5:
-		print(Fore.RED + 'Master UA is in wrong state')
 		print(Fore.YELLOW +'Master UA in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
-		#return False
-		#sys.exit(1)
+		logging.warning('Master UA in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
 	else:
 		print(Fore.GREEN + 'Master UA still in conference - it is ok. Continue...')
-
+		logging.info('Master UA still in conference - it is ok. Continue...')
 
 	print('Making group call...')
+	logging.info('Making group call...')
 	if tcGroupAll(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber):
 		print(Fore.GREEN +'Group call command sent')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with sending a group call command...')
+		hangupAll()
 		return False
-		#sys.exit(1)	
 
 	print(Style.BRIGHT + 'Teleconference in progress.... ')
+	logging.info('Teleconference in progress.... ')
 
 	cnt=0 # timer
 	confDuration = 10 + (tcUACCount * 2)
 
-	failureFlag = False
-	Failure = False
-	while cnt < confDuration:		
+	while cnt < confDuration:
 		failureFlag = False
 		time.sleep(1)
 		print('.',end='')
 		cnt += 1
-		for i in range(0,tcUACCount):
-			if tcUAcli[i].uaCurrentCallInfo.state != 5:
-				print(Fore.YELLOW +'UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
-				failureFlag = True
 
-	if failureFlag:
-		Failure = True
+	Failure = False
+	for i in range(tcUACCount):
+		if tcUAcli[i].uaCurrentCallInfo.state != 5:
+			print(Fore.YELLOW +'UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
+			logging.warning('UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
+			Failure = True
 
-	'''
-	tcMasterUA.uaCurrentCall.hold()
-	time.sleep(1)
-	tcMasterUA.uaCurrentCall.unhold()
-	'''
+	if Failure:
+		print('Some subscribers were in wrong call state')
+		logging.error('Some subscribers were in wrong call state')
+		hangupAll()
+		return False
 
 	print(Style.BRIGHT + 'Stoping teleconference....')
+	logging.info('Stoping teleconference....')
 	if tcStopConf(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber):
 		print(Fore.GREEN +'Stop teleconference success')
+		logging.info('Stop teleconference success')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with teleconference stoping...')
+		logging.error('Smthing happen wrong with teleconference stoping...')
+		hangupAll()
 		return False
-		#sys.exit(1)	
 
 	time.sleep(5)
 
 	UAnotReleased = False
 	if tcMasterUA.uaCurrentCallInfo.state != 6:
-		print(Fore.RED + 'Master UA is in wrong state')
 		print(Fore.YELLOW +'Master UA in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
-		#return False
-		#sys.exit(1)
+		logging.warning('Master UA in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
 	else:
 		print(Fore.GREEN + 'Master UA successfully released')
+		logging.info('Master UA successfully released')
 
-	for i in range(0,tcUACCount):
+	for i in range(tcUACCount):
 		if tcUAcli[i].uaCurrentCallInfo.state != 6:
 			print(Fore.YELLOW +'UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
+			logging.warning('UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
 			UAnotReleased = True
 
 	if UAnotReleased:
 		print(Fore.RED + 'Some UAs didnt disconected')
+		logging.error('Some UAs didnt disconected')
+		hangupAll()
 		return False
-		#sys.exit(1)
 	else:
 		print(Fore.GREEN +'All UA successfully released')
+		logging.info('All UA successfully released')
 		return True
-	return not Failure
 
 def riseForVoice():
-	global tcMasterUA
-	global tcUAcli
 	global recievedPOSTstr
+	logging.info('Ask for voice test')
 
 	if tcStartConf(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber,templateName=testTemplateName):
 		print(Fore.GREEN +'Start teleconference success')
+		logging.info('Start teleconference success')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with teleconference starting...')
+		logging.error('Smthing happen wrong with teleconference starting...')
+		hangupAll()
 		return False
-		#sys.exit(1)
 
 	time.sleep(2)
 
 	if tcMasterUA.uaCurrentCallInfo.state != 5:
 		print(Fore.RED + 'Master UA is in wrong state')
+		logging.error('Master UA is in wrong state')
+		hangupAll()
 		return False
-		#sys.exit(1)
 	else:
 		print(Fore.GREEN + 'Master UA is in active call state')
-
+		logging.info('Master UA is in active call state')
 
 	print('Making group call...')
+	logging.info('Making group call...')
 	if tcGroupAll(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber):
 		print(Fore.GREEN +'Group call command sent')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with sending a group call command...')
+		logging.error('Smthing happen wrong with sending a group call command...')
+		hangupAll()
 		return False
-		#sys.exit(1)	
 
 	time.sleep(1)
 
-	for i in range(0,tcUACCount):
+	for i in range(tcUACCount):
 		if tcUAcli[i].uaCurrentCallInfo.state != 5:
 			print(Fore.YELLOW +'UA '+ str(i) + ' in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
-
+			logging.warning('UA '+ str(i) + ' in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
 
 	print(Style.BRIGHT + 'Teleconference in progress.... ')
+	logging.info('Teleconference in progress.... ')
 
 	cnt=0 # timer
 	confDuration = 10 + (tcUACCount * 2)
 
-	#time.sleep(2)
-	
 	voiceOnNotifyRecieved = False
 	voiceOnBlinkLedRecieved = False
 	while cnt < confDuration:		
@@ -673,18 +721,30 @@ def riseForVoice():
 		cnt += 1
 		if cnt == 6:
 			print(Style.BRIGHT +'Sending DTMF...')
+			logging.info('Sending DTMF...')
 			tcUAcli[0].sendInbandDTMF(dtmfDigit='1')
 		if cnt > 6:
-			if '<Title>2001</Title><Text>Дайте мне голос, пожалуйста</Text>' in  recievedPOSTstr:
+			if '<Text>Дайте мне голос, пожалуйста</Text>' in  recievedPOSTstr:
 				voiceOnNotifyRecieved = True
+				logging.info('Recieved Yealink Info screen message')
 			if 'Led: EXP-1-1-GREEN=fastflash' in recievedPOSTstr:
 				voiceOnBlinkLedRecieved = True
-		for i in range(0,tcUACCount):
-			if tcUAcli[i].uaCurrentCallInfo.state != 5:
-				print(Fore.YELLOW +'UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
+				logging.info('Recieved Yealink exp. panel LED fastflash')
 
-	
+	Failure = False
+	for i in range(tcUACCount):
+		if tcUAcli[i].uaCurrentCallInfo.state != 5:
+			print(Fore.YELLOW +'UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
+			logging.warning('UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
+			Failure = True
+	if Failure:
+		print('Some subscribers were in wrong call state')
+		logging.error('Some subscribers were in wrong call state')
+		hangupAll()
+		return False
+
 	print(Style.BRIGHT + 'Stoping teleconference....')
+	logging.info('Stoping teleconference....')
 	'''
 	if tcStopConf(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber):
 		print(Fore.GREEN +'Stop teleconference success')
@@ -693,73 +753,96 @@ def riseForVoice():
 		return False
 		#sys.exit(1)	
 	'''
-	tcMasterUA.uaCurrentCall.hangup(code=200, reason='Conference finish!')
+	try:
+		logging.info('Hanging up master')
+		tcMasterUA.uaCurrentCall.hangup(code=200, reason='Conference finish!')
+	except:
+		pass
 
 	time.sleep(3)
 
 	UAnotReleased = False
 	if tcMasterUA.uaCurrentCallInfo.state != 6:
-		print(Fore.RED + 'Master UA is in wrong state')
 		print('Master UA in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
-		#return False
-		#sys.exit(1)
+		logging.warning('Master UA in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
+		return False
 	else:
 		print(Fore.GREEN + 'Master UA successfully released')
+		logging.info('Master UA successfully released')
 
-	for i in range(0,tcUACCount):
+	Failure = False
+	for i in range(tcUACCount):
 		if tcUAcli[i].uaCurrentCallInfo.state != 6:
 			print('UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
-			UAnotReleased = True
+			logging.warning('UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
+			Failure = True
 
 	if not voiceOnNotifyRecieved:
 		print(Fore.RED + 'Didnt recieved Notify message ')
+		logging.error('Didnt recieved Notify message ')
+		hangupAll()
 		return False
 	else:
 		print(Fore.GREEN + 'Voice on notify message successful recieved')
+		logging.info('Voice on notify message successful recieved')
 
 	if not voiceOnBlinkLedRecieved:
 		print(Fore.RED + 'LED indicator didnt blinked on voice notification')
+		logging.error('LED indicator didnt blinked on voice notification')
+		hangupAll()
 		return False
 	else:
 		print(Fore.GREEN + 'LED indicator successful changed on voice notification')
+		logging.info('LED indicator successful changed on voice notification')
 
-
+	if Failure:
+		print('Some subscribers were in wrong call state')
+		logging.error('Some subscribers were in wrong call state')
+		hangupAll()
+		return False
+	else:
+		print(Fore.GREEN + 'All UA successfully released')
+		logging.info('All UA successfully released')
+		return True
+	'''
 	if UAnotReleased:
 		print(Fore.RED + 'Some UAs didnt disconected')
+		hangupAll()
 		return False
-		#sys.exit(1)
 	else:
 		print(Fore.GREEN +'All UA successfully released')		
-
 	return True
+	'''
 
 def connectToConfViaTransfer():
+	logging.info('Making conference with external client')
 	Failure = True
-	global tcMasterUA
-	global tcUAcli
-	global extUAcli
-	global tcSecondaryMasterUA
 
 	if tcStartConf(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber,templateName=testTemplateName):
 		print(Fore.GREEN +'Start teleconference success')
+		logging.info('Start teleconference success')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with teleconference starting...')
+		logging.error('Smthing happen wrong with teleconference starting...')
+		hangupAll()
 		return False
-		#sys.exit(1)
 
 	time.sleep(3)
 
 	if tcMasterUA.uaCurrentCallInfo.state != 5:
 		print(Fore.RED + 'Master UA is in wrong state')
+		logging.warning('Master UA is in wrong state')
+		hangupAll()
 		return False
-		#sys.exit(1)
 	else:
 		print(Fore.GREEN + 'Master UA is in active call state')
+		logging.info('Master UA is in active call state')
 
-
+	logging.info('Holding')
 	tcMasterUA.uaCurrentCall.hold()
 	time.sleep(1)
 
+	logging.info('Making call to external user from secondary master accaunt')
 	tcSecondaryMasterUA.makeCall(phoneURI=tcExtMember+'@'+testingDomain)
 
 	print('waiting for answer...')
@@ -775,21 +858,26 @@ def connectToConfViaTransfer():
 
 	if not Answered:
 		print('Call not recieved')
+		logging.error('Call not recieved')
+		hangupAll()
 		return False
 	else:
 		print('Call answered')
+		logging.info('Call answered')
 
-	#tcSecondaryMasterUA.uaCurrentCall.transfer(dest_uri='sip:'+masterNumber+'@'+testingDomain)
-	#print('holding...')
-	#tcSecondaryMasterUA.uaCurrentCall.hold()
 	time.sleep(2)
-	print('transfering...')
+	print('transfering to conference...')
+	logging.info('transfering to conference...')
 
 	tcSecondaryMasterUA.ctr_request(dstURI=masterNumber+'@'+testingDomain,currentCall=tcSecondaryMasterUA.uaCurrentCall)
 	time.sleep(1)
 	print('hanging up...')
-	tcSecondaryMasterUA.uaCurrentCall.hangup(code=200, reason='Release after transfer')
+	try:
+		tcSecondaryMasterUA.uaCurrentCall.hangup(code=200, reason='Release after transfer')
+	except:
+		pass
 
+	logging.info('Check if secondry master released')
 	cnt = 0
 	Released = False
 	while cnt < 50:		
@@ -802,20 +890,24 @@ def connectToConfViaTransfer():
 
 	if not Released:
 		print(Fore.RED +'Secondary Master call not released')
+		logging.error('Secondary Master call not released')
+		hangupAll()
 		return False
 	else:
 		print(Fore.GREEN +'Secondary Master released after transfer')
+		logging.info('Secondary Master released after transfer')
 
 	time.sleep(1)
 
 	#tcSecondaryMasterUA
 	print('Unholding master...')
+	logging.info('Unholding master...')
 	tcMasterUA.uaCurrentCall.unhold()
 
 	cnt=0 # timer
 	confDuration = 10 
 
-	failureFlag = False
+
 	Failure = False
 	while cnt < confDuration:	
 		failureFlag = False	
@@ -823,57 +915,64 @@ def connectToConfViaTransfer():
 		print('.',end='')
 		cnt += 1
 		if extUAcli.uaCurrentCallInfo.state != 5:
-			print(Fore.YELLOW +'Client UA '+ str(i) + ' still in wrong state: ' + str(extUAcli.uaAccountInfo.uri) + ' ' + extUAcli.uaCurrentCallInfo.state_text)
-			failureFlag = True
+			print(Fore.YELLOW +'Client external UA still in wrong state: ' + str(extUAcli.uaAccountInfo.uri) + ' ' + extUAcli.uaCurrentCallInfo.state_text)
+			logging.warning('Client external UA still in wrong state: ' + str(extUAcli.uaAccountInfo.uri) + ' ' + extUAcli.uaCurrentCallInfo.state_text)
+			Failure = True
 		if tcMasterUA.uaCurrentCallInfo.state != 5:
-			print(Fore.YELLOW +'Master UA '+ str(i) + ' still in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
-			failureFlag = True
+			print(Fore.YELLOW +'Master UA still in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
+			logging.warning('Master UA still in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
+			Failure = True
 
-	if failureFlag:
-		Failure = True
+	if Failure:
+		print('Some subscribers were in wrong call state')
+		logging.error('Some subscribers were in wrong call state')
+		hangupAll()
+		return False
 
 	print('Stoping teleconference....')
+	logging.info('Stoping teleconference....')
 	if tcStopConf(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber):
 		print(Fore.GREEN +'Stop teleconference success')
+		logging.info('Stop teleconference success')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with teleconference stoping...')
+		logging.error('Smthing happen wrong with teleconference stoping...')
+		hangupAll()
 		return False
-		#sys.exit(1)	
 
 	time.sleep(5)
 
 	UAnotReleased = False
 	if extUAcli.uaCurrentCallInfo.state != 6:
-		print(Fore.YELLOW +'Client UA '+ str(i) + ' still in wrong state: ' + str(extUAcli.uaAccountInfo.uri) + ' ' + extUAcli.uaCurrentCallInfo.state_text)
+		print(Fore.YELLOW +'Client external UA still in wrong state: ' + str(extUAcli.uaAccountInfo.uri) + ' ' + extUAcli.uaCurrentCallInfo.state_text)
+		logging.warning('Client external UA still in wrong state: ' + str(extUAcli.uaAccountInfo.uri) + ' ' + extUAcli.uaCurrentCallInfo.state_text)
 		UAnotReleased = True
 	else:
 		print(Fore.GREEN +'Client UA Released')
+		logging.info('Client UA Released')
 
 	if tcMasterUA.uaCurrentCallInfo.state != 6:
-		print(Fore.YELLOW +'Master UA '+ str(i) + ' still in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
+		print(Fore.YELLOW +'Master UA still in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
+		logging.warning('Master UA still in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
 		UAnotReleased = True
 	else:
 		print(Fore.GREEN +'Master UA Released')
-
+		logging.info('Master UA Released')
 
 	if UAnotReleased:
 		print(Fore.RED + 'Some UAs didnt disconected')
+		logging.error('Some UAs didnt disconected')
+		hangupAll()
 		return False
-		#sys.exit(1)
 	else:
 		print(Fore.GREEN +'All UA successfully released')
+		logging.info('All UA successfully released')
 		return True
 	
-	return not Failure
-
-
 def domainActiveChannelsLimit():
-	global tcMasterUA
-	global tcUAcli
-	global extUAcli
-	global tcSecondaryMasterUA
-
+	logging.info('Test active channels limits')
 	print('Reconfiguring tc_count_active_channels property:')
+	logging.info('Reconfiguring tc_count_active_channels property:')
 
 	tcActiveChanLimit = 2
 
@@ -881,139 +980,168 @@ def domainActiveChannelsLimit():
 	print(returnedFromSSH)
 	if ('changed' in returnedFromSSH) or ('set to' in returnedFromSSH):
 		print(Fore.GREEN +'Property changed')
+		logging.info('Property changed')
 	else:
 		print(Fore.RED + 'Failed to change property tc_count_active_channels')
+		logging.error('Failed to change property tc_count_active_channels')
+		hangupAll()
 		return False
 
 	time.sleep(1)
 
 	if tcStartConf(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber,templateName=testTemplateName):
 		print(Fore.GREEN +'Start teleconference success')
+		logging.info('Start teleconference success')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with teleconference starting...')
+		logging.error('Smthing happen wrong with teleconference starting...')
+		hangupAll()
 		return False
 
 	time.sleep(3)
 
 	if tcMasterUA.uaCurrentCallInfo.state != 5:
 		print(Fore.RED + 'Master UA is in wrong state')
+		logging.error('Master UA is in wrong state')
+		hangupAll()
 		return False
 	else:
 		print(Fore.GREEN + 'Master UA is in active call state')
-
+		logging.info('Master UA is in active call state')
 
 	print(Style.BRIGHT + 'Connecting user one by one')
-	for num in range(2001, 2001 + tcUACCount):
+	logging.info('Connecting user one by one')
+
+	firstUACliNum = int(config.testConfigJson['UsersClients'][0]['Number'])
+	for num in range(firstUACliNum, firstUACliNum + tcUACCount):
 		if tcExpPushOnUser(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber,memberNumber=str(num)):
 			print(Fore.GREEN +'User '+ str(num) +' command sent')
+			logging.info('User '+ str(num) +' command sent')
 		else:
 			print(Fore.RED + 'Smthing happen wrong with sending user '+ str(num) +' command sent...')
+			logging.warning('Smthing happen wrong with sending user '+ str(num) +' command sent...')
 		time.sleep(0.5)
 
-
 	print(Style.BRIGHT + 'Teleconference in progress.... ')
+	logging.info('Teleconference in progress.... ')
 	cnt=0 # timer
 	confDuration = 10 + (tcUACCount * 2)
 
-	failureFlag = False
 	Failure = False
-	while cnt < confDuration:		
-		failureFlag = False
+	failureFlag = False
+	while cnt < confDuration:
 		time.sleep(1)
 		print('.',end='')
 		cnt += 1
 		for i in range(0,tcActiveChanLimit):
+			Failure = False
 			if tcUAcli[i].uaCurrentCallInfo.state != 5:
 				print(Fore.YELLOW +'UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
-				failureFlag = True
+				logging.warning('UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
+				Failure = True
+		if Failure:
+			failureFlag = True
+
+		Failure = False
 		for i in range(tcActiveChanLimit,tcUACCount):
 			if tcUAcli[i].uaCurrentCallInfo.state == 5:
 				print(Fore.YELLOW +'UA '+ str(i) + ' in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
-				failureFlag = True
+				Failure = True
+		if Failure:
+			failureFlag = True
+
+
 	if failureFlag:
-		Failure = True
+		print('Some subscribers were in wrong call state')
+		logging.error('Some subscribers were in wrong call state')
+		hangupAll()
+		return False
 
 	print(Style.BRIGHT + 'Stoping teleconference....')
 	if tcStopConf(dom=testingDomain,restHost=restHost,restPort=restPort,masterNumber=masterNumber):
 		print(Fore.GREEN +'Stop teleconference success')
+		logging.info('Stop teleconference success')
 	else:
 		print(Fore.RED + 'Smthing happen wrong with teleconference stoping...')
+		logging.error('Smthing happen wrong with teleconference stoping...')
+		hangupAll()
 		return False
 
 	time.sleep(5)
 
 	print('Cleaning property tc_count_active_channels')
+	logging.info('Cleaning property tc_count_active_channels')
 	returnedFromSSH = ccn.executeOnSSH('domain/'+testingDomain+'/properties/restrictions/clean tc_count_active_channels')
 	print(returnedFromSSH)
 	if 'unseted' in returnedFromSSH:
 		print(Fore.GREEN +'Property changed')
+		logging.info('Property changed')
 	else:
 		print(Fore.RED + 'Failed to change property tc_count_active_channels')
+		logging.info('Failed to change property tc_count_active_channels')
+		hangupAll()
 		return False
-
 	return not Failure
 
+def hangupAll(reason='All calls finish due to failure'):
+	print('Hangup all calls : ' + reason)
+	logging.info('Hangup all calls : ' + reason)
+	for pjSubscriber in tcUAcli:
+		try:
+			pjSubscriber.uaCurrentCall.hangup(code=200, reason=reason)
+		except Exception as e:
+			pass
+	try:
+		tcSecondaryMasterUA.uaCurrentCall.hangup(code=200, reason=reason)
+		tcMasterUA.uaCurrentCall.hangup(code=200, reason=reason)
+		tcExtMember.uaCurrentCall.hangup(code=200, reason=reason)
+	except Exception as e:
+		pass
+
+
+def iterTest(testMethod, testName, terminateOnFailure = False):
+	if testMethod:
+		res = True
+		resultStr = testName + ' - OK'
+		logging.info(resultStr)
+	else:
+		res = False
+		resultStr = testName + ' - FAILED'
+		logging.error(resultStr)
+		if terminateOnFailure:
+			sys.exit(1)
+	testResultsList.append(resultStr)
+	print(resultStr)
+	return res
 
 #############################################################################################
 
-tcMasterUA = 0
-tcUAcli = 0
+success = True
 
-print('-Start preconfiguration test-')
-if not preconfigure():
-	print(Fore.RED + 'Preconfiguration test failed')
-	sys.exit(1)
-else:
-	print('-Start preconfiguration done!-')
-	time.sleep(1)
-
+# Start Yealink http server
 httpYealinkListen_T = Thread(target=runHTTPYealinkListener, name='httpYealinkListen', daemon=True)
-#httpYealinkListen_T.daemon = True 
 httpYealinkListen_T.start()
 
-#runHTTPYealinkListener()
+testResultsList.append(' ------TEST RESULTS------- ')
+iterTest(preconfigure(),'Preconfiguration',True)
+success = success&iterTest(registerUAs(),'SIP register',True)
+success = success&iterTest(basicTest(),'Basic Teleconference')
+success = success&iterTest(riseForVoice(),'Request for voice')
+success = success&iterTest(connectToConfViaTransfer(),'Connect to conference external user')
+#success = success&iterTest(domainActiveChannelsLimit(),'License active users limit')
+success = success&iterTest(basicTest(),'One more repeat of Basic Teleconference')
 
-print(Style.BRIGHT +'-Registering of SIP UAs-')
-if not registerUAs():
-	print(Fore.RED + 'Registration of SIP UAs failed')
-else:	
-	print(Fore.GREEN +'-Registration of SIP UAs done!-')
-	time.sleep(1)
+print(Style.BRIGHT + 'Total Results of Teleconference tests:')
+for reportStr in testResultsList:
+	print(reportStr)
+	logging.info(reportStr)
 
-#'''
-print(Style.BRIGHT +'-Starting basic test-')
-if not basicTest():
-	print(Fore.RED + 'Basic test failed')
+if not success:
+	print(Fore.RED +'Some tests failed!')
+	logging.error('Some tests failed!')
 	sys.exit(1)
 else:
-	print(Fore.GREEN +'-Basic test done!-')
-	time.sleep(1)
-
-#'''
-print(Style.BRIGHT +'-Starting request for voice test-')
-if not riseForVoice():
-	print(Fore.RED + 'Request for voice failed')
-	sys.exit(1)
-else:
-	print(Fore.GREEN +'Request for voice test done!-')
-	time.sleep(1)
-#'''
-print(Style.BRIGHT +'-Starting connection to active conference test-')
-if not connectToConfViaTransfer():
-	print(Fore.RED + 'Connect via transfer test failed')
-	sys.exit(1)
-else:
-	print(Fore.GREEN +'-Connection to active conference test done!-')
-	time.sleep(1)
-#'''
-
-if not domainActiveChannelsLimit():
-	print(Fore.RED + 'Domain Active channels limit test failed')
-	sys.exit(1)
-else:
-	print(Fore.GREEN +'-Domain Active channels limit test done!-')
-	time.sleep(1)
-
-print(Fore.GREEN +'It seems to be all FINE...')
-print('We did it!!')
-sys.exit(0)
+	print(Fore.GREEN +'It seems to be all FINE...')
+	logging.info('All test OK!')
+	print('We did it!!')
+	sys.exit(0)
