@@ -245,13 +245,14 @@ def tcExpPushOnUser(dom,restHost,restPort,masterNumber,memberNumber):
 	print('Pushing on '+ str(memberNumber) +' member button ...')
 	logging.info('Pushing on '+ str(memberNumber) +' member button ...')
 	try:
-		logging.info(
-			'Http request: ' + 'http://' + restHost + ':' + restPort + '/' + dom + '/service/tc/' + masterNumber + '/choose')
+		logging.info('http://'+restHost+':'+restPort+'/'+dom+'/service/tc/'+masterNumber+'/exp/'+memberNumber)
 		r = requests.get('http://'+restHost+':'+restPort+'/'+dom+'/service/tc/'+masterNumber+'/exp/'+memberNumber)
 	except Exception as e:
 		print('Exception ocure: ' + format(e))
+		logging.error('Exception ocure: ' + format(e))
 		return False
 	if r.status_code != 200:
+		logging.info('Return code: ' + str(r.status_code))
 		print('Return code: ' + str(r.status_code))
 		return False
 	return True
