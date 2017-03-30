@@ -455,16 +455,16 @@ def registerUAs():
 	global tcMasterUA
 
 	tcMasterUA = pjua.SubscriberUA(domain=testingDomain,username=masterNumber,passwd=masterSIPpass,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,
-								   displayName='TC Master UA',uaIP=pjListenAddress,regExpiresTimeout=60)
+								   displayName='TC Master UA',uaIP=pjListenAddress,regExpiresTimeout=300)
 	tcSecondaryMasterUA = pjua.SubscriberUA(domain=testingDomain,username=secondaryMaster,passwd=secondaryMaster,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,
-											displayName='TC Secondary Master UA',uaIP=pjListenAddress,regExpiresTimeout=60)
+											displayName='TC Secondary Master UA',uaIP=pjListenAddress,regExpiresTimeout=300)
 	extUAcli = pjua.SubscriberUA(domain=testingDomain,username=tcExtMember,passwd=masterSIPpass,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,
-								 displayName='TC ext UA',uaIP=pjListenAddress,regExpiresTimeout=60)
+								 displayName='TC ext UA',uaIP=pjListenAddress,regExpiresTimeout=300)
 
 	for i in range(tcUACCount):
 		subscrNum = config.testConfigJson['UsersClients'][i]['Number']
 		tcUAcli.append(pjua.SubscriberUA(domain=testingDomain,username=subscrNum,passwd=masterSIPpass,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,
-										 displayName='Test UA'+str(i),uaIP=pjListenAddress,regExpiresTimeout=60))
+										 displayName='Test UA'+str(i),uaIP=pjListenAddress,regExpiresTimeout=300))
 		#print('Len =' + str(len(tcUAcli)) )
 
 	if tcMasterUA.uaAccountInfo.reg_status != 200:
@@ -492,7 +492,7 @@ def registerUAs():
 		return False
 	else:
 		print(Fore.GREEN + 'External UA Registered')
-		logging.error('External UA Registered')
+		logging.info('External UA Registered')
 
 	allCliRegistered = False
 	cnt = 0
@@ -519,6 +519,8 @@ def registerUAs():
 	logging.info('All UAC registered')
 
 	ccn.subscriberSipInfo(dom=testingDomain,sipNumber=masterNumber,sipGroup=SIPgroup,complete=False)
+
+	time.sleep(1)
 
 	return True
 
@@ -585,8 +587,9 @@ def basicTest():
 			tcUAcli[i].uaCurrentCall.hangup(code=200, reason='Release')
 		except:
 			pass
+	print('Sleep 10 sec')
+	time.sleep(10)
 
-	time.sleep(1)
 
 	if tcMasterUA.uaCurrentCallInfo.state != 5:
 		print(Fore.YELLOW +'Master UA in wrong state: ' + str(tcMasterUA.uaAccountInfo.uri) + ' ' + tcMasterUA.uaCurrentCallInfo.state_text)
@@ -1092,8 +1095,16 @@ def hangupAll(reason='All calls finish due to failure'):
 		except Exception as e:
 			pass
 	try:
-		tcSecondaryMasterUA.uaCurrentCall.hangup(code=200, reason=reason)
 		tcMasterUA.uaCurrentCall.hangup(code=200, reason=reason)
+	except Exception as e:
+		pass
+
+	try:
+		tcSecondaryMasterUA.uaCurrentCall.hangup(code=200, reason=reason)
+	except Exception as e:
+		pass
+
+	try:
 		tcExtMember.uaCurrentCall.hangup(code=200, reason=reason)
 	except Exception as e:
 		pass
@@ -1123,13 +1134,13 @@ httpYealinkListen_T = Thread(target=runHTTPYealinkListener, name='httpYealinkLis
 httpYealinkListen_T.start()
 
 testResultsList.append(' ------TEST RESULTS------- ')
-iterTest(preconfigure(),'Preconfiguration',True)
+#iterTest(preconfigure(),'Preconfiguration',True)
 success = success&iterTest(registerUAs(),'SIP register',True)
 success = success&iterTest(basicTest(),'Basic Teleconference')
-success = success&iterTest(riseForVoice(),'Request for voice')
-success = success&iterTest(connectToConfViaTransfer(),'Connect to conference external user')
+#success = success&iterTest(riseForVoice(),'Request for voice')
+#success = success&iterTest(connectToConfViaTransfer(),'Connect to conference external user')
 #success = success&iterTest(domainActiveChannelsLimit(),'License active users limit')
-success = success&iterTest(basicTest(),'One more repeat of Basic Teleconference')
+#success = success&iterTest(basicTest(),'One more repeat of Basic Teleconference')
 
 print(Style.BRIGHT + 'Total Results of Teleconference tests:')
 for reportStr in testResultsList:
