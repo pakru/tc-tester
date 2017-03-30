@@ -222,6 +222,7 @@ def tcStartConf(dom,restHost,restPort,masterNumber,templateName):
 		print('Return code: ' + str(r.status_code))
 		logging.error('Return code: ' + str(r.status_code))
 		return False
+	logging.info('Return code: ' + str(r.status_code))
 	return True
 
 def tcCancelPush(dom,restHost,restPort,Number):
@@ -236,9 +237,10 @@ def tcCancelPush(dom,restHost,restPort,Number):
 		logging.error('Exception ocure: ' + format(e))
 		return False
 	if r.status_code != 200:
-		logging.info('Return code: ' + str(r.status_code))
+		logging.error('Return code: ' + str(r.status_code))
 		print('Return code: ' + str(r.status_code))
 		return False
+	logging.info('Return code: ' + str(r.status_code))
 	return True
 
 def tcExpPushOnUser(dom,restHost,restPort,masterNumber,memberNumber):
@@ -252,9 +254,10 @@ def tcExpPushOnUser(dom,restHost,restPort,masterNumber,memberNumber):
 		logging.error('Exception ocure: ' + format(e))
 		return False
 	if r.status_code != 200:
-		logging.info('Return code: ' + str(r.status_code))
+		logging.error('Return code: ' + str(r.status_code))
 		print('Return code: ' + str(r.status_code))
 		return False
+	logging.info('Return code: ' + str(r.status_code))
 	return True
 
 def tcStopConf(dom,restHost,restPort,masterNumber):
@@ -270,6 +273,7 @@ def tcStopConf(dom,restHost,restPort,masterNumber):
 
 def tcCancelUser(dom,restHost,restPort,Number):
 	print('Pushing on cancel user from conference...')
+	logging.info('Pushing on cancel user from conference...')
 	if not tcCancelPush(dom=dom,restHost=restHost,restPort=restPort,Number=masterNumber):
 		return False
 	time.sleep(0.5)
