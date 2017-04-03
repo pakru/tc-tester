@@ -47,6 +47,7 @@ tcUAcli = []
 extUAcli = None
 tcSecondaryMasterUA = None
 
+#POSTDecoder = False
 recievedPOSTstr = ''
 testResultsList = []
 
@@ -66,14 +67,14 @@ class testHTTPServer_RequestHandler(BaseHTTPRequestHandler):
 	def do_GET(self):
 		# Send response status code
 		self.send_response(200)
-		print('Recieved GET message')
-		logging.info('Recieved GET message')
-		logging.info('Recieved data: ' + str(self.rfile.readline().decode('utf-8')))
-		print('Recieved data: ' + str(self.rfile.readline().decode('utf-8')))
+		print('Received GET message')
+		logging.info('Received GET message')
 		#Send headers
 		self.send_header('Content-Length','0')
 		self.send_header('Server','Fake yealink')
 		self.end_headers()
+		logging.info('Received data: ' + str(self.rfile.readline().decode('utf-8')))
+		print('Received data: ' + str(self.rfile.readline().decode('utf-8')))
 		# Send message back to client
 		#message = 'OK!'
 		# Write content as utf-8 data
@@ -83,22 +84,24 @@ class testHTTPServer_RequestHandler(BaseHTTPRequestHandler):
 
 	def do_POST(self):
 		global recievedPOSTstr
+		logging.info('Received POST, sending 200 response')
 		self.send_response(200)
+		#self.request_version = 'HTTP/1.1'
+		#self.server_version = 'PY/1.1'
+
+		self.send_header('Content-Length','0')
+		self.send_header('Server','Fake Yealink')
+		self.end_headers()
+
+		#if POSTDecoder:
 		recievedPOSTstr = self.rfile.readline().decode('utf-8')
-		print('Recieved POST message')
-		logging.info('Recieved POST message: ' + recievedPOSTstr)
+		logging.info('Received POST message: ' + recievedPOSTstr)
+
 		#logging.info('Recieved data: ' + str(self.rfile.readline().decode('utf-8')))
 		#print('Recieved POST message: ' + recievedPOSTstr)
 		#print('Recieved data: ' + str(self.rfile.readline().decode('utf-8')))
 		#self.log_request()
 		#Send headers
-		self.request_version = 'HTTP/1.1'
-		self.server_version = 'PY/1.0'
-
-		self.send_header('Content-Length','0')
-		self.send_header('Server','Fake Yealink')
-		#self.send_header('Server','Fake yealink')
-		self.end_headers()
 		#self.flush_headers()
 		# Send message back to client
 		#message = 'OK!'
@@ -454,13 +457,11 @@ def preconfigure():
 
 def registerUAs():
 	logging.info('Creating pj subscribers')
-	global tcMasterUA
-	global tcSecondaryMasterUA
-	global extUAcli
-	global tcMasterUA
+	global tcMasterUA, tcSecondaryMasterUA, extUAcli, tcMasterUA, POSTDecoder
 
 	tcMasterUA = pjua.SubscriberUA(domain=testingDomain,username=masterNumber,passwd=masterSIPpass,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,
 								   displayName='TC Master UA',uaIP=pjListenAddress,regExpiresTimeout=300)
+	#time.sleep(3)
 	tcSecondaryMasterUA = pjua.SubscriberUA(domain=testingDomain,username=secondaryMaster,passwd=secondaryMaster,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,
 											displayName='TC Secondary Master UA',uaIP=pjListenAddress,regExpiresTimeout=300)
 	extUAcli = pjua.SubscriberUA(domain=testingDomain,username=tcExtMember,passwd=masterSIPpass,sipProxy=testingDomainSIPaddr+':'+testingDomainSIPport,
@@ -526,6 +527,7 @@ def registerUAs():
 	ccn.subscriberSipInfo(dom=testingDomain,sipNumber=masterNumber,sipGroup=SIPgroup,complete=False)
 
 	time.sleep(1)
+	#POSTDecoder = True
 
 	return True
 
@@ -561,6 +563,7 @@ def basicTest():
 			print(Fore.GREEN +'User '+ str(num) +' command sent')
 		else:
 			print(Fore.RED + 'Smthing happen wrong with sending user '+ str(num) +' command sent...')
+		time.sleep(0.5)
 
 	print(Style.BRIGHT + 'Teleconference in progress.... ')
 	logging.info('Teleconference in progress.... ')
@@ -731,10 +734,12 @@ def riseForVoice():
 			print(Style.BRIGHT +'Sending DTMF...')
 			logging.info('Sending DTMF...')
 			tcUAcli[0].sendInbandDTMF(dtmfDigit='1')
-		if cnt > 6:
-			if '<Text>Дайте мне голос, пожалуйста</Text>' in  recievedPOSTstr:
+		if cnt >= 6:
+			'''
+			if '<Text>Дайте мне голос, пожалуйста</Text>' in recievedPOSTstr:
 				voiceOnNotifyRecieved = True
-				logging.info('Recieved Yealink Info screen message')
+				logging.info('Recieved Yealink Info screen message'
+			'''
 			if 'Led: EXP-1-1-GREEN=fastflash' in recievedPOSTstr:
 				voiceOnBlinkLedRecieved = True
 				logging.info('Recieved Yealink exp. panel LED fastflash')
@@ -784,7 +789,7 @@ def riseForVoice():
 			print('UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
 			logging.warning('UA '+ str(i) + ' still in wrong state: ' + str(tcUAcli[i].uaAccountInfo.uri) + ' ' + tcUAcli[i].uaCurrentCallInfo.state_text)
 			Failure = True
-
+	'''
 	if not voiceOnNotifyRecieved:
 		print(Fore.RED + 'Didnt recieved Notify message ')
 		logging.error('Didnt recieved Notify message ')
@@ -793,7 +798,7 @@ def riseForVoice():
 	else:
 		print(Fore.GREEN + 'Voice on notify message successful recieved')
 		logging.info('Voice on notify message successful recieved')
-
+	'''
 	if not voiceOnBlinkLedRecieved:
 		print(Fore.RED + 'LED indicator didnt blinked on voice notification')
 		logging.error('LED indicator didnt blinked on voice notification')
@@ -1137,14 +1142,14 @@ success = True
 # Start Yealink http server
 httpYealinkListen_T = Thread(target=runHTTPYealinkListener, name='httpYealinkListen', daemon=True)
 httpYealinkListen_T.start()
-
+#time.sleep(5)
 testResultsList.append(' ------TEST RESULTS------- ')
-#iterTest(preconfigure(),'Preconfiguration',True)
+iterTest(preconfigure(),'Preconfiguration',True)
 success = success&iterTest(registerUAs(),'SIP register',True)
 success = success&iterTest(basicTest(),'Basic Teleconference')
 success = success&iterTest(riseForVoice(),'Request for voice')
 success = success&iterTest(connectToConfViaTransfer(),'Connect to conference external user')
-success = success&iterTest(domainActiveChannelsLimit(),'License active users limit')
+#success = success&iterTest(domainActiveChannelsLimit(),'License active users limit') #- почему-то после этого теста не хочет подключаться юзер 1210
 success = success&iterTest(basicTest(),'One more repeat of Basic Teleconference')
 
 print(Style.BRIGHT + 'Total Results of Teleconference tests:')

@@ -10,23 +10,15 @@
   "SIPuaListenPort" : "5090",
   "RestPort" : "8086",
   "TemplateName" : "Testing_conference",
-  "Cocon" : [
-    {
-      "Login" : "admin",
-      "Password" : "password",
-      "Host" : "192.168.118.37",
-      "Port" : "8023"
-    }
-  ],
-    "SystemVars" : [
+  "SystemVars" : [
     {
       "%%MODULE_PATH%%" : "/home/tester/my_python_mods",
       "%%DEV_USER%%" : "admin",
       "%%DEV_PASS%%" : "password",
-      "%%SERV_IP%%" : "192.168.118.245",
+      "%%SERV_IP%%" : "192.168.118.47",
       "%%IP%%": "192.168.118.12",
-      "%%EXTER_IP%%" : "192.168.118.245",
-      "%%EXTER_IP2%%" : "192.168.118.245",
+      "%%EXTER_IP%%" : "192.168.118.47",
+      "%%EXTER_IP2%%" : "192.168.118.47",
       "%%CCN_PORT%%" : "8023",
       "%%LOG_PATH%%": "/tmp/test_log/log"
     }
