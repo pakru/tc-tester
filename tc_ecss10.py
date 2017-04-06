@@ -26,7 +26,7 @@ masterNumber = config.testConfigJson['UsersMasters'][0]['Number']
 secondaryMaster = config.testConfigJson['UsersMasters'][1]['Number']
 masterSIPpass = config.testConfigJson['UsersMasters'][0]['Password']
 SIPgroup = config.testConfigJson['UsersMasters'][0]['SipGroup']
-restHost = config.testConfigJson['SystemVars'][0]['%%EXTER_IP%%']
+restHost = config.testConfigJson['SystemVars'][0]['%%TC_IP%%']
 restPort = config.testConfigJson['RestPort']
 testTemplateName = config.testConfigJson['TemplateName']
 
