@@ -129,8 +129,9 @@ def runHTTPYealinkListener():
 		httpd = HTTPServer(server_address, testHTTPServer_RequestHandler)
 		logging.info('Starting running http fake Yealink server')
 	except Exception as e:
-		print('Exception: ' + str(e))
+		print('Exception happen at http server start: ' + str(e))
 		logging.error('Exception happen at http server start: ' + str(e))
+		sys.exit(1)
 	print('running yealink server...')
 	httpd.serve_forever()
 
@@ -329,7 +330,7 @@ def preconfigure():
 	###### - to be removed
 	hRequests = HT.httpTerm(host=config.host,port='9999',login=config.login,passwd=config.password)
 
-	if ccn.domainDeclare(testingDomain, removeIfExists = False) :
+	if ccn.domainDeclare(testingDomain, removeIfExists = True) :
 		print(Fore.GREEN + 'Successful domain declare')
 	else :
 		print(Fore.RED + 'Smthing happen wrong with domain declaration...')
@@ -352,10 +353,12 @@ def preconfigure():
 		print(Fore.RED + 'Smthing happen wrong with SIP network setup...')
 		return False
 		#sys.exit(1)
+	'''
 	if ccn.sipTransportSetup(dom=testingDomain,sipIP=testingDomainSIPaddr2,sipPort=testingDomainSIPport, sipNode='sip1@ecss2'):
 		print(Fore.GREEN + 'Successful secondary SIP transport declare')
 	else :
 		print(Fore.YELLOW + 'Smthing happen wrong with secondary SIP network setup...')
+	'''
 
 	if hRequests.routeCtxAdd(domainName=testingDomain,ctxString=ctx) == 201:
 		print(Fore.GREEN + 'Successful declaration routing CTX')
@@ -1147,10 +1150,10 @@ testResultsList.append(' ------TEST RESULTS------- ')
 iterTest(preconfigure(),'Preconfiguration',True)
 success = success&iterTest(registerUAs(),'SIP register',True)
 success = success&iterTest(basicTest(),'Basic Teleconference')
-success = success&iterTest(riseForVoice(),'Request for voice')
-success = success&iterTest(connectToConfViaTransfer(),'Connect to conference external user')
+#success = success&iterTest(riseForVoice(),'Request for voice')
+#success = success&iterTest(connectToConfViaTransfer(),'Connect to conference external user')
 #success = success&iterTest(domainActiveChannelsLimit(),'License active users limit') #- почему-то после этого теста не хочет подключаться юзер 1210
-success = success&iterTest(basicTest(),'One more repeat of Basic Teleconference')
+#success = success&iterTest(basicTest(),'One more repeat of Basic Teleconference')
 
 print(Style.BRIGHT + 'Total Results of Teleconference tests:')
 for reportStr in testResultsList:
