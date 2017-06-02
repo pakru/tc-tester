@@ -129,7 +129,7 @@ def runHTTPYealinkListener():
 		httpd = HTTPServer(server_address, testHTTPServer_RequestHandler)
 		logging.info('Starting running http fake Yealink server')
 	except Exception as e:
-		print('Exception happen at http server start: ' + str(e))
+		print('Exception happen at http server start:' + str(e))
 		logging.error('Exception happen at http server start: ' + str(e))
 		sys.exit(1)
 	print('running yealink server...')
@@ -1150,9 +1150,9 @@ testResultsList.append(' ------TEST RESULTS------- ')
 iterTest(preconfigure(),'Preconfiguration',True)
 success = success&iterTest(registerUAs(),'SIP register',True)
 success = success&iterTest(basicTest(),'Basic Teleconference')
-#success = success&iterTest(riseForVoice(),'Request for voice')
-#success = success&iterTest(connectToConfViaTransfer(),'Connect to conference external user')
-#success = success&iterTest(domainActiveChannelsLimit(),'License active users limit') #- почему-то после этого теста не хочет подключаться юзер 1210
+success = success&iterTest(riseForVoice(),'Request for voice')
+success = success&iterTest(connectToConfViaTransfer(),'Connect to conference external user')
+success = success&iterTest(domainActiveChannelsLimit(),'License active users limit') #- почему-то после этого теста не хочет подключаться юзер 1210
 #success = success&iterTest(basicTest(),'One more repeat of Basic Teleconference')
 
 print(Style.BRIGHT + 'Total Results of Teleconference tests:')
