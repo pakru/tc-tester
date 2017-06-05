@@ -1,10 +1,10 @@
 {
   "TestName": "Teleconference service",
-  "AutoTest" : "True",
+  "AutoTest" : "False",
   "Isolate" : "False",
   "TestType" : "Services",
   "TestScript" : "tc_ecss10.py",
-  "DomainName" : "tc.domain.test23",
+  "DomainName" : "tc.domain.test1",
   "sipListenPort" : "5088",
   "SIPuaListenAddr" : "192.168.118.12",
   "SIPuaListenPort" : "5090",
