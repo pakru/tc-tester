@@ -1,6 +1,6 @@
 {
   "TestName": "Teleconference service",
-  "AutoTest" : "False",
+  "AutoTest" : "True",
   "Isolate" : "False",
   "TestType" : "Services",
   "TestScript" : "tc_ecss10.py",
